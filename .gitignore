@@ -1,3 +1,5 @@
+preprocessed_words.tar.gz
+preprocessed_words_padding_segmented/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

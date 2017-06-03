@@ -6,15 +6,15 @@ import os
 from scipy import misc
 from PIL import Image
 
-batch_size = 64
-num_train = 100
-num_val = 100
-num_test = 100
-input_width = 2270 #original image sizes
-input_height = 342
+batch_size = 20
+num_train = 10000
+num_val = 1000
+num_test = 1000
+input_width = 375 #original image sizes
+input_height = 85
 
-input_width_modified = 1000
-scale = 0.25
+input_width_modified = 375
+scale = 1
 
 def get_random_exclude(low, high, exclude):
   r = np.random.randint(low, high)
@@ -24,8 +24,8 @@ def get_random_exclude(low, high, exclude):
 
 #assume
 def processImage(image):
-  image = image[:, :input_width_modified]
-  image = misc.imresize(image,scale)
+  #image = image[:, :input_width_modified]
+  #image = misc.imresize(image,scale)
   image = np.expand_dims(image,axis=2)
   image = image.astype(float)
   return image / 256.
@@ -44,6 +44,7 @@ def get_dataset(data_dir, writer_index_low, writer_index_high, num_examples):
     file_idx1 = np.random.randint(0, num_urls)
     file_idx2 = get_random_exclude(0, num_urls, file_idx1)
 
+    
     image1 = np.reshape(misc.imread(os.path.join(url_folder, urls[file_idx1])), (input_height, input_width))
     image2 = np.reshape(misc.imread(os.path.join(url_folder, urls[file_idx2])), (input_height, input_width))
     image1 = processImage(image1)
@@ -129,7 +130,7 @@ def get_next_batch(start, end, inputs, labels):
 
 
 start_time = time.time()
-x_train, y_train, x_val, y_val, x_test, y_test = create_data("preprocessed_lines_contrast_adjustment", num_train, num_val, num_test)
+x_train, y_train, x_val, y_val, x_test, y_test = create_data("preprocessed_words_padding_segmented", num_train, num_val, num_test)
 print("finished getting data", time.time() - start_time)
 #data
 
@@ -161,7 +162,7 @@ with tf.Session() as sess:
     perms = np.random.shuffle(np.arange(x_train.shape[0]))
     s = x_train.shape
     x_train = np.reshape(x_train[perms, :, :, :], s)
-    y_train =np.squeeze( y_train[perms])
+    y_train = np.squeeze( y_train[perms])
 
     for i in range(total_batch):
       start = i * batch_size
@@ -225,6 +226,7 @@ with tf.Session() as sess:
     start = i * batch_size
     end = (i+1) * batch_size 
     input1, input2, y = get_next_batch(start, end, x_test, y_test)
+    print(y.shape)
     predict = siamese.distance.eval(feed_dict={
       siamese.x1:input1,
       siamese.x2:input2,
