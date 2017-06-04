@@ -6,7 +6,8 @@ import tensorflow.contrib.layers as layers
 
 class Siamese_Net:
   
-  def __init__(self, batch_size, input_shape):
+  def __init__(self, batch_size, input_shape, learning_rate=0.0001):
+    self.learning_rate = learning_rate
     self.x1 = tf.placeholder(tf.float32, input_shape) # TODO: change to true dimensions
     self.x2 = tf.placeholder(tf.float32, input_shape)
     self.keep_prob = 0.5
@@ -50,7 +51,7 @@ class Siamese_Net:
     a2 = (1-self.y) * tf.square(tf.maximum((1-self.distance), 0))
     return tf.reduce_sum(a + a2) / self.batch_size / 2
   def add_optimizer_loss(self, loss):
-    optimizer = tf.train.AdamOptimizer(learning_rate=0.0001)
+    optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
     gvs = optimizer.compute_gradients(loss)
     gs, vs = zip(*gvs)
     self.grad_norm = tf.global_norm(gs)
