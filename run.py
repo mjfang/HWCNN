@@ -3,17 +3,21 @@ import numpy as np
 import time
 import siamese_net
 import os
+import datetime
+import pickle
+import h5py
 from scipy import misc
 from PIL import Image
 
 batch_size = 64
-num_train = 100
-num_val = 100
-num_test = 100
+num_train = 10000
+num_val = 1000
+num_test = 1000
 input_width = 2270 #original image sizes
 input_height = 342
-
-input_width_modified = 1000
+num_epochs = 40
+input_height_modified = 250
+input_width_modified = 1500
 scale = 0.25
 
 def get_random_exclude(low, high, exclude):
@@ -24,7 +28,8 @@ def get_random_exclude(low, high, exclude):
 
 #assume
 def processImage(image):
-  image = image[:, :input_width_modified]
+  st = (input_height- input_height_modified)/2
+  image = image[st:st+input_height_modified, :input_width_modified]
   image = misc.imresize(image,scale)
   image = np.expand_dims(image,axis=2)
   image = image.astype(float)
@@ -127,9 +132,20 @@ def get_next_batch(start, end, inputs, labels):
   y_batch = labels[start:end]
   return input1, input2, y_batch
 
-
+import os.path
 start_time = time.time()
-x_train, y_train, x_val, y_val, x_test, y_test = create_data("preprocessed_lines_contrast_adjustment", num_train, num_val, num_test)
+if not os.path.isfile("dataset"):
+  x_train, y_train, x_val, y_val, x_test, y_test = create_data("preprocessed_lines_contrast_adjustment", num_train, num_val, num_test)
+  data = (y_train, x_val, y_val, x_test, y_test)
+  pickle.dump(data, open("dataset", "wb"))
+  file = h5py.File('x_train.h5', 'w')
+  file.create_dataset("x_train", data=x_train)
+  file.close()
+
+else:
+  data = pickle.load(open("dataset", "rb"))
+  y_train, x_val, y_val, x_test, y_test = data
+  x_train = h5py.File('x_train.h5','r')['x_train'][()]
 print("finished getting data", time.time() - start_time)
 #data
 
@@ -142,15 +158,17 @@ def do_summaries(siamese, graph, output_file = "results/"):
 
 tr_acc_epoch = []
 val_acc_epoch = []
-
 with tf.Session() as sess:
-  siamese = siamese_net.Siamese_Net(batch_size, [None, int(input_height*scale), int(input_width_modified * scale), 1])
-  
+  siamese = siamese_net.Siamese_Net(batch_size, [None, int(input_height_modified*scale), int(input_width_modified * scale), 1])
+  name="results" + datetime.datetime.now().strftime("%m-%d-%H-%M-%S")
+  os.makedirs(name)
   #train_step = tf.train.AdamOptimizer().minimize(siamese.loss)
-  merged, fw = do_summaries(siamese, sess.graph) 
+  merged, fw = do_summaries(siamese, sess.graph, output_file=name) 
   sess.run(tf.global_variables_initializer())
+  saver = tf.train.Saver()
   counter = 0
-  for epoch in range(30):
+  best_val_acc = 0.
+  for epoch in range(num_epochs):
     avg_loss = 0.
     count_tp = 0.
     count_tn = 0.
@@ -209,7 +227,40 @@ with tf.Session() as sess:
       v_tn += tn
       v_fp += fp
       v_fn += fn
-    print("Val set accuracy %0.2f tp %f tn %f fp %f fn %f" % (100 * (v_tp + v_tn) / (v_tp + v_tn + v_fp + v_fn), v_tp, v_tn, v_fp, v_fn))
+    
+    val_acc = 100 * (v_tp + v_tn) / (v_tp + v_tn + v_fp + v_fn)
+    if val_acc > best_val_acc:
+      best_val_acc = val_acc
+      if epoch > 20:
+        saver.save(sess, "./model")
+    print("Val set accuracy %0.2f tp %f tn %f fp %f fn %f" % (val_acc, v_tp, v_tn, v_fp, v_fn))
+    val_acc_epoch.append(val_acc)
+    fw.add_summary(tf.Summary(value=[tf.Summary.Value(tag="val_acc", simple_value=val_acc)]), epoch)
+    #test
+    te_tp = 0.
+    te_tn = 0.
+    te_fp = 0.
+    te_fn = 0.
+    
+    total_test_batch = int(x_test.shape[0]/batch_size)
+    for i in range(total_test_batch):
+      start = i * batch_size
+      end = (i+1) * batch_size
+      input1, input2, y = get_next_batch(start, end, x_test, y_test)
+      predict = siamese.distance.eval(feed_dict={
+        siamese.x1:input1,
+        siamese.x2:input2,
+        siamese.y: y
+      })
+      tp, tn, fp, fn = compute_counts(predict, y)
+      te_tp += tp
+      te_tn += tn
+      te_fp += fp
+      te_fn += fn
+
+    print("Test set accuracy %0.2f" % (100 * (te_tp + te_tn) / (te_tp + te_tn + te_fp + te_fn)))
+
+
   #test
   te_tp = 0.
   te_tn = 0.
@@ -238,6 +289,8 @@ with tf.Session() as sess:
 
   print("Test set accuracy %0.2f" % (100 * (te_tp + te_tn) / (te_tp + te_tn + te_fp + te_fn)))
   print(tr_acc_epoch, val_acc_epoch)
+  #saver.save(sess, "./model" + epoch)
+  #print("Model saved ", name)
   #t = np.arange(len(tr_acc_epoch))
   #plt.plot(t, tr_acc_epoch, 'bo')
   #plt.plot(t, val_acc_epoch, 'ro')
