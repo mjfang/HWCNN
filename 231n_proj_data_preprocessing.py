@@ -77,10 +77,10 @@ def pad_original_png_images(png_root_dir, preprocessed_pngs_folder, largest_heig
 				if width <= largest_width:	
 					width_padding_needed = int(largest_width - width)
 					pad_width_left_right = (0, width_padding_needed)
-					padded_image = np.pad(line_png_matrix, ((0,0), pad_width_left_right), 'constant', constant_values=255)
+					padded_image = np.pad(padded_image, ((0,0), pad_width_left_right), 'constant', constant_values=255)
 				else:
 					padded_image = padded_image[:, 0:largest_width]
-				padded_image = misc.imresize(padded_image,0.25)
+				padded_image = misc.imresize(padded_image,0.5)
 				save_preprocessed_image(padded_image, line_png_file, form_to_author_map, preprocessed_pngs_folder)
 
 def save_preprocessed_image(image_array, line_png_file, form_to_author_map, preprocessed_pngs_folder):
