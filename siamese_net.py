@@ -7,6 +7,9 @@ import tensorflow.contrib.layers as layers
 class Siamese_Net:
 
   def __init__(self, batch_size, input_shape):
+    self.data_dict = None
+    self.var_dict = {}
+
     self.x1 = tf.placeholder(tf.float32, input_shape) # TODO: change to true dimensions
     self.x2 = tf.placeholder(tf.float32, input_shape)
     self.keep_prob = 0.5
@@ -24,7 +27,7 @@ class Siamese_Net:
     self.train_op = self.add_optimizer_loss(self.loss)
 
   def network(self, input):
-    # self.regularizer = layers.l2_regularizer(scale=0.1)
+    self.regularizer = layers.l2_regularizer(scale=0.1)
     # conv1 = layers.conv2d(input, num_outputs=32, kernel_size=[10, 10], stride=[1, 1])
     # pool1 = tf.nn.max_pool(conv1,[1,2,2,1], strides = [1,2,2,1], padding='VALID')
     # conv2 = layers.conv2d(pool1, num_outputs=64, kernel_size=[8, 8], stride=[1,1])
@@ -65,13 +68,14 @@ class Siamese_Net:
 
     self.fc6 = self.fc_layer(self.pool5, 25088, 4096, "fc6")  # 25088 = ((224 // (2 ** 5)) ** 2) * 512
     self.relu6 = tf.nn.relu(self.fc6)
-    self.relu6 = tf.nn.dropout(self.relu6, self.dropout)
+    self.relu6 = tf.nn.dropout(self.relu6, self.keep_prob)
 
     self.fc7 = self.fc_layer(self.relu6, 4096, 4096, "fc7")
     self.relu7 = tf.nn.relu(self.fc7)
-    self.relu7 = tf.nn.dropout(self.relu7, self.dropout)
+    self.relu7 = tf.nn.dropout(self.relu7, self.keep_prob)
 
     self.fc8 = self.fc_layer(self.relu7, 4096, 1000, "fc8")
+    self.data_dict = None
 
     return self.fc8
 
@@ -124,10 +128,7 @@ class Siamese_Net:
       else:
           value = initial_value
 
-      if self.trainable:
-          var = tf.Variable(value, name=var_name)
-      else:
-          var = tf.constant(value, dtype=tf.float32, name=var_name)
+      var = tf.Variable(value, name=var_name)
 
       self.var_dict[(name, idx)] = var
 
@@ -145,11 +146,6 @@ class Siamese_Net:
     reg_vars = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
     reg_term = layers.apply_regularization(self.regularizer, reg_vars)
     return tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y_int, logits=out)) + reg_term
-
-  def contrastive_loss(self):
-    a = self.y * tf.square(self.distance)
-    a2 = (1-self.y) * tf.square(tf.maximum((1-self.distance), 0))
-    return tf.reduce_sum(a + a2) / self.batch_size / 2
 
   def add_optimizer_loss(self, loss):
     optimizer = tf.train.AdamOptimizer(learning_rate=0.0001)
