@@ -2,7 +2,7 @@
 
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
-
+import resnet
 
 class Siamese_Net:
   
@@ -12,9 +12,9 @@ class Siamese_Net:
     self.keep_prob = 0.5
     self.batch_size = batch_size
     with tf.variable_scope("siamese") as scope:
-      self.out1 = self.network(self.x1)
+      self.out1 = self.resnet(self.x1)
       scope.reuse_variables()
-      self.out2 = self.network(self.x2)
+      self.out2 = self.resnet(self.x2)
     #L2 distance
     pow = tf.pow(tf.subtract(self.out1,self.out2), 2)
     #self.distance = tf.sqrt(tf.reduce_sum(pow,1,keep_dims=True))
@@ -35,15 +35,17 @@ class Siamese_Net:
     out = layers.fully_connected(d_fc1, 200, weights_regularizer = self.regularizer)
     #d_out = tf.nn.dropout(out, self.keep_prob)
     return out
+  def resnet(self, input):
+    return resnet.inference_small(input, is_training=True, num_blocks=1)
   def softmax_loss(self):
     self.h = tf.concat([tf.square(self.out1-self.out2), self.out1, self.out2], axis=1)
     out = layers.fully_connected(self.h, 2, activation_fn = None)
     
     self.distance =tf.nn.softmax( out)[:, 0]
     y_int = tf.cast(self.y, tf.int32)
-    reg_vars = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
-    reg_term = layers.apply_regularization(self.regularizer, reg_vars)
-    return tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y_int, logits=out)) + reg_term
+    # reg_vars = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+    # reg_term = layers.apply_regularization(self.regularizer, reg_vars)
+    return tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y_int, logits=out)) #+ reg_term
     
   def contrastive_loss(self):
     a = self.y * tf.square(self.distance)
