@@ -52,7 +52,7 @@ class Siamese_Net:
     a2 = (1-self.y) * tf.square(tf.maximum((1-self.distance), 0))
     return tf.reduce_sum(a + a2) / self.batch_size / 2
   def add_optimizer_loss(self, loss):
-    optimizer = tf.train.AdamOptimizer(learning_rate=0.0001)
+    optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
     gvs = optimizer.compute_gradients(loss)
     gs, vs = zip(*gvs)
     self.grad_norm = tf.global_norm(gs)
