@@ -10,12 +10,12 @@ from scipy import misc
 from PIL import Image
 
 batch_size = 64
-num_train = 10000
-num_val = 1000
-num_test = 1000
+num_train = 100
+num_val = 100
+num_test = 100
 input_width = 2270 #original image sizes
 input_height = 342
-num_epochs = 40
+num_epochs = 1
 input_height_modified = 250
 input_width_modified = 1500
 scale = 0.25
@@ -40,8 +40,12 @@ def get_dataset(data_dir, writer_index_low, writer_index_high, num_examples):
   labels = []
   writer_folders = os.listdir(data_dir)
   print(num_examples)
+
+  dataset_record = []
+
   for i in range(int(num_examples / 2)):
     #positive pair
+
     wr_1 = np.random.randint(writer_index_low, writer_index_high)
     url_folder = os.path.join(data_dir, writer_folders[wr_1])
     urls = os.listdir(url_folder)
@@ -53,7 +57,7 @@ def get_dataset(data_dir, writer_index_low, writer_index_high, num_examples):
     image2 = np.reshape(misc.imread(os.path.join(url_folder, urls[file_idx2])), (input_height, input_width))
     image1 = processImage(image1)
     image2 = processImage(image2)
-
+    dataset_record.append((writer_folders[wr_1], urls[file_idx1], urls[file_idx2]))
     pairs += [[image1, image2]]
 
     #negative pair
@@ -63,6 +67,8 @@ def get_dataset(data_dir, writer_index_low, writer_index_high, num_examples):
     num_urls = len(urls)
     file_idx3 = np.random.randint(0, num_urls)
     image3 = np.reshape(misc.imread(os.path.join(url_folder, urls[file_idx3])), (input_height, input_width))
+
+    url3 = urls[file_idx3]
     #image3 = image3[:, :input_height]
     #image3 = misc.imresize(image3, 0.3)
     wr_2 = get_random_exclude(writer_index_low, writer_index_high, wr_1)
@@ -72,13 +78,15 @@ def get_dataset(data_dir, writer_index_low, writer_index_high, num_examples):
     file_idx4 = np.random.randint(0, num_urls)
     image4 = np.reshape(misc.imread(os.path.join(url_folder, urls[file_idx4])), (input_height, input_width))
     #image4 = image4[:, :input_height]
-
     #image4 = misc.imresize(image4, 0.3)
     image3 = processImage(image3)
     image4 = processImage(image4)
+
+    dataset_record.append((writer_folders[wr_1],  url3, writer_folders[wr_2], urls[file_idx4]))
+    # dataset_record.append(record)
     pairs += [[image3, image4]]
     labels += [1,0]
-  return np.array(pairs),np.array(labels)
+  return np.array(pairs),np.array(labels), dataset_record
 
 
 #x, labels = get_dataset("test_data", 0, 4, 300)
@@ -86,12 +94,12 @@ def get_dataset(data_dir, writer_index_low, writer_index_high, num_examples):
 #print("")
 #
 #
-def compute_counts(prediction,labels):
+def compute_counts(distance, labels):
   
-  tp = labels[prediction.ravel() < 0.5].sum()
-  tn = (1-labels)[prediction.ravel() > 0.5].sum()
-  fp = labels[prediction.ravel() > 0.5].sum()
-  fn = (1-labels)[prediction.ravel() < 0.5].sum()
+  tp = labels[distance.ravel() < 0.5].sum() #predict close=positive, actually pos
+  tn = (1-labels)[distance.ravel() > 0.5].sum() # predict far=negative, actually neg
+  fp = labels[distance.ravel() > 0.5].sum() #predict far=negative, but actually pos
+  fn = (1-labels)[distance.ravel() < 0.5].sum()
   
   return tp, tn, fp, fn
 
@@ -102,6 +110,22 @@ def output_random_distances(prediction, labels, num_outputs = 5):
 
 def normalize(x, mean):
   return (x - mean)
+
+def sample_mistakes(test_record, distance, labels):
+  distances = distance.ravel()
+  for i in range(len(labels)):
+    label = labels[i]
+    dist = distances[i]
+    if dist < 0.5:
+      if label == 1:
+        #TP
+        pass
+      else:
+        #FN
+        print(label, dist, test_record[i])
+    else:
+      if label == 1:
+        print(label, dist, test_record[i])
 
 
 #657 writers
@@ -116,14 +140,14 @@ def create_data(data_dir, num_train, num_val, num_test):
 
   cutoff_1 = np.round(train_frac * num_writers)
   cutoff_2 = cutoff_1 + np.round(val_frac * num_writers)
-  x_train, y_train = get_dataset(data_dir, 0, cutoff_1, num_train)
+  x_train, y_train, _ = get_dataset(data_dir, 0, cutoff_1, num_train)
   x_mean = np.mean(x_train, axis=0)
   x_train = normalize(x_train, x_mean)
-  x_val, y_val = get_dataset(data_dir, cutoff_1, cutoff_2, num_val)
+  x_val, y_val, _ = get_dataset(data_dir, cutoff_1, cutoff_2, num_val)
   x_val = normalize(x_val, x_mean)
-  x_test, y_test = get_dataset(data_dir, cutoff_2, num_writers, num_test)
+  x_test, y_test, test_record = get_dataset(data_dir, cutoff_2, num_writers, num_test)
   x_test = normalize(x_test, x_mean)
-  return (x_train, y_train, x_val, y_val, x_test, y_test)
+  return (x_train, y_train, x_val, y_val, x_test, y_test, test_record)
 
 
 def get_next_batch(start, end, inputs, labels):
@@ -134,17 +158,19 @@ def get_next_batch(start, end, inputs, labels):
 
 import os.path
 start_time = time.time()
+test_record = None
 if not os.path.isfile("dataset"):
-  x_train, y_train, x_val, y_val, x_test, y_test = create_data("preprocessed_lines_contrast_adjustment", num_train, num_val, num_test)
-  data = (y_train, x_val, y_val, x_test, y_test)
+  x_train, y_train, x_val, y_val, x_test, y_test, test_record = create_data("preprocessed_lines_contrast_adjustment", num_train, num_val, num_test)
+  data = (y_train, x_val, y_val, x_test, y_test, test_record)
   pickle.dump(data, open("dataset", "wb"))
   file = h5py.File('x_train.h5', 'w')
   file.create_dataset("x_train", data=x_train)
+
   file.close()
 
 else:
   data = pickle.load(open("dataset", "rb"))
-  y_train, x_val, y_val, x_test, y_test = data
+  y_train, x_val, y_val, x_test, y_test, test_record = data
   x_train = h5py.File('x_train.h5','r')['x_train'][()]
 print("finished getting data", time.time() - start_time)
 #data
@@ -163,7 +189,7 @@ with tf.Session() as sess:
   name="results" + datetime.datetime.now().strftime("%m-%d-%H-%M-%S")
   os.makedirs(name)
   #train_step = tf.train.AdamOptimizer().minimize(siamese.loss)
-  merged, fw = do_summaries(siamese, sess.graph, output_file=name) 
+  merged, fw = do_summaries(siamese, sess.graph, output_file=name)
   sess.run(tf.global_variables_initializer())
   saver = tf.train.Saver()
   counter = 0
@@ -272,22 +298,25 @@ with tf.Session() as sess:
   fw.add_summary(tf.Summary(value=[tf.Summary.Value(tag="val_acc", simple_value=val_acc)]), epoch)
   
   total_test_batch = int(x_test.shape[0]/batch_size)
-  for i in range(total_test_batch):
-    start = i * batch_size
-    end = (i+1) * batch_size 
-    input1, input2, y = get_next_batch(start, end, x_test, y_test)
-    predict = siamese.distance.eval(feed_dict={
-      siamese.x1:input1,
-      siamese.x2:input2,
-      siamese.y: y
-    })
-    tp, tn, fp, fn = compute_counts(predict, y)
-    te_tp += tp
-    te_tn += tn
-    te_fp += fp
-    te_fn += fn
+  # for i in range(total_test_batch):
+  #   start = i * batch_size
+  #   end = (i+1) * batch_size
+  #   input1, input2, y = get_next_batch(start, end, x_test, y_test)
+  predict = siamese.distance.eval(feed_dict={
+    siamese.x1:x_test[:, 0],
+    siamese.x2:x_test[:, 1],
+    siamese.y: y_test
+  })
+  #   tp, tn, fp, fn = compute_counts(predict, y)
+  #   te_tp += tp
+  #   te_tn += tn
+  #   te_fp += fp
+  #   te_fn += fn
 
-  print("Test set accuracy %0.2f" % (100 * (te_tp + te_tn) / (te_tp + te_tn + te_fp + te_fn)))
+  # print("Test set accuracy %0.2f" % (100 * (te_tp + te_tn) / (te_tp + te_tn + te_fp + te_fn)))
+
+
+  sample_mistakes(test_record, predict, y_test)
   print(tr_acc_epoch, val_acc_epoch)
   #saver.save(sess, "./model" + epoch)
   #print("Model saved ", name)
