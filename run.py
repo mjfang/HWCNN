@@ -9,17 +9,18 @@ import h5py
 from scipy import misc
 from PIL import Image
 
+log_file = "logfile"
 batch_size = 64
 num_train = 10000
 num_val = 1000
 num_test = 1000
 input_width = 2270 #original image sizes
 input_height = 342
-num_epochs = 40
+num_epochs = 20
 input_height_modified = 250
 input_width_modified = 1500
 scale = 0.25
-
+log = open(log_file, 'w')
 def get_random_exclude(low, high, exclude):
   r = np.random.randint(low, high)
   while r == exclude:
@@ -207,6 +208,8 @@ with tf.Session() as sess:
     duration = time.time() - start_time
     acc = (count_tp + count_tn) / (count_tp + count_tn + count_fp + count_fn)  
     print('epoch %d  time: %f loss %0.5f acc %0.2f tp %f tn %f fp %f fn %f' %(epoch,duration,avg_loss/(total_batch),acc, count_tp, count_tn, count_fp, count_fn))
+    log.write('epoch %d  time: %f loss %0.5f acc %0.2f tp %f tn %f fp %f fn %f' %(epoch,duration,avg_loss/(total_batch),acc, count_tp, count_tn, count_fp, count_fn))
+
     tr_acc_epoch.append(acc)
     fw.add_summary(tf.Summary(value=[tf.Summary.Value(tag="tr_acc", simple_value=acc)]), epoch)
     
@@ -231,9 +234,10 @@ with tf.Session() as sess:
     val_acc = 100 * (v_tp + v_tn) / (v_tp + v_tn + v_fp + v_fn)
     if val_acc > best_val_acc:
       best_val_acc = val_acc
-      if epoch > 20:
-        saver.save(sess, "./model")
+      #saver.save("./model23")
     print("Val set accuracy %0.2f tp %f tn %f fp %f fn %f" % (val_acc, v_tp, v_tn, v_fp, v_fn))
+    log.write("Val set accuracy %0.2f tp %f tn %f fp %f fn %f" % (val_acc, v_tp, v_tn, v_fp, v_fn))
+
     val_acc_epoch.append(val_acc)
     fw.add_summary(tf.Summary(value=[tf.Summary.Value(tag="val_acc", simple_value=val_acc)]), epoch)
     #test
@@ -259,6 +263,7 @@ with tf.Session() as sess:
       te_fn += fn
 
     print("Test set accuracy %0.2f" % (100 * (te_tp + te_tn) / (te_tp + te_tn + te_fp + te_fn)))
+    log.write("Test set accuracy %0.2f" % (100 * (te_tp + te_tn) / (te_tp + te_tn + te_fp + te_fn)))
 
 
   #test
@@ -289,6 +294,8 @@ with tf.Session() as sess:
 
   print("Test set accuracy %0.2f" % (100 * (te_tp + te_tn) / (te_tp + te_tn + te_fp + te_fn)))
   print(tr_acc_epoch, val_acc_epoch)
+  log.write((tr_ac_apoch, val_acc_epoch))
+  log.close()
   #saver.save(sess, "./model" + epoch)
   #print("Model saved ", name)
   #t = np.arange(len(tr_acc_epoch))
