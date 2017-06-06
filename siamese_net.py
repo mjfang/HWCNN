@@ -6,10 +6,11 @@ import tensorflow.contrib.layers as layers
 
 class Siamese_Net:
 
-  def __init__(self, batch_size, input_shape):
+  def __init__(self, batch_size, input_shape, learning_rate=0.0001):
     self.data_dict = None
     self.var_dict = {}
 
+    self.learning_rate = learning_rate
     self.x1 = tf.placeholder(tf.float32, input_shape) # TODO: change to true dimensions
     self.x2 = tf.placeholder(tf.float32, input_shape)
     self.keep_prob = 0.5
@@ -27,57 +28,49 @@ class Siamese_Net:
     self.train_op = self.add_optimizer_loss(self.loss)
 
   def network(self, input):
-    self.regularizer = layers.l2_regularizer(scale=0.1)
-    # conv1 = layers.conv2d(input, num_outputs=32, kernel_size=[10, 10], stride=[1, 1])
-    # pool1 = tf.nn.max_pool(conv1,[1,2,2,1], strides = [1,2,2,1], padding='VALID')
-    # conv2 = layers.conv2d(pool1, num_outputs=64, kernel_size=[8, 8], stride=[1,1])
-    # pool2 = tf.nn.max_pool(conv2,[1,2,2,1], strides = [1,2,2,1], padding='VALID')
-    # conv3 = layers.conv2d(pool2, num_outputs = 64, kernel_size=[4,4], stride=[1,1])
-    # conv2_flattened = layers.flatten(conv2)
-    # fc1 = layers.fully_connected(conv2_flattened, 400, biases_initializer=tf.constant_initializer(0), weights_regularizer=self.regularizer)
-    # d_fc1 = tf.nn.dropout(fc1,self.keep_prob)
-    # out = layers.fully_connected(d_fc1, 200, weights_regularizer = self.regularizer)
+    self.regularizer = layers.l2_regularizer(scale=5e-4) # same as what the vgg19 paper uses
+    pooling_padding = 'SAME'
 
-    #d_out = tf.nn.dropout(out, self.keep_prob)
+    conv1_1 = layers.conv2d(input, num_outputs=64, kernel_size=[3, 3], stride=[1, 1], weights_initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    conv1_2 = layers.conv2d(conv1_1, num_outputs=64, kernel_size=[3, 3], stride=[1, 1], weights_initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    pool1 = tf.nn.avg_pool(conv1_2, [1,2,2,1], strides = [1,2,2,1], padding=pooling_padding)
 
-    self.conv1_1 = self.conv_layer(input, 1, 64, "conv1_1") # should only be one channel for b/w?
-    self.conv1_2 = self.conv_layer(self.conv1_1, 64, 64, "conv1_2")
-    self.pool1 = self.max_pool(self.conv1_2, 'pool1')
+    conv2_1 = layers.conv2d(pool1, num_outputs=128, kernel_size=[3, 3], stride=[1, 1], weights_initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    conv2_2 = layers.conv2d(conv2_1, num_outputs=128, kernel_size=[3, 3], stride=[1, 1], weights_initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    pool2 = tf.nn.avg_pool(conv2_2, [1,2,2,1], strides = [1,2,2,1], padding=pooling_padding)
 
-    self.conv2_1 = self.conv_layer(self.pool1, 64, 128, "conv2_1")
-    self.conv2_2 = self.conv_layer(self.conv2_1, 128, 128, "conv2_2")
-    self.pool2 = self.max_pool(self.conv2_2, 'pool2')
+    conv3_1 = layers.conv2d(pool2, num_outputs=256, kernel_size=[3, 3], stride=[1, 1], weights_initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    conv3_2 = layers.conv2d(conv3_1, num_outputs=256, kernel_size=[3, 3], stride=[1, 1], weights_initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    # conv3_3 = layers.conv2d(conv3_2, num_outputs=256, kernel_size=[3, 3], stride=[1, 1], weights_initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    # conv3_4 = layers.conv2d(conv3_3, num_outputs=256, kernel_size=[3, 3], stride=[1, 1], weights_initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    pool3 = tf.nn.avg_pool(conv3_2, [1,2,2,1], strides = [1,2,2,1], padding=pooling_padding)
 
-    self.conv3_1 = self.conv_layer(self.pool2, 128, 256, "conv3_1")
-    self.conv3_2 = self.conv_layer(self.conv3_1, 256, 256, "conv3_2")
-    self.conv3_3 = self.conv_layer(self.conv3_2, 256, 256, "conv3_3")
-    self.conv3_4 = self.conv_layer(self.conv3_3, 256, 256, "conv3_4")
-    self.pool3 = self.max_pool(self.conv3_4, 'pool3')
+    conv4_1 = layers.conv2d(pool3, num_outputs=512, kernel_size=[3, 3], stride=[1, 1], weights_initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    conv4_2 = layers.conv2d(conv4_1, num_outputs=512, kernel_size=[3, 3], stride=[1, 1], weights_initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    # conv4_3 = layers.conv2d(conv4_2, num_outputs=512, kernel_size=[3, 3], stride=[1, 1], weights_initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    # conv4_4 = layers.conv2d(conv4_3, num_outputs=512, kernel_size=[3, 3], stride=[1, 1], weights_initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    pool4 = tf.nn.avg_pool(conv4_2, [1,2,2,1], strides = [1,2,2,1], padding=pooling_padding)
 
-    self.conv4_1 = self.conv_layer(self.pool3, 256, 512, "conv4_1")
-    self.conv4_2 = self.conv_layer(self.conv4_1, 512, 512, "conv4_2")
-    self.conv4_3 = self.conv_layer(self.conv4_2, 512, 512, "conv4_3")
-    self.conv4_4 = self.conv_layer(self.conv4_3, 512, 512, "conv4_4")
-    self.pool4 = self.max_pool(self.conv4_4, 'pool4')
+    conv5_1 = layers.conv2d(pool4, num_outputs=512, kernel_size=[3, 3], stride=[1, 1], weights_initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    conv5_2 = layers.conv2d(conv5_1, num_outputs=512, kernel_size=[3, 3], stride=[1, 1], weights_initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    # conv5_3 = layers.conv2d(conv5_2, num_outputs=512, kernel_size=[3, 3], stride=[1, 1], weights_initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    # conv5_4 = layers.conv2d(conv5_3, num_outputs=512, kernel_size=[3, 3], stride=[1, 1], weights_initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    pool5 = tf.nn.avg_pool(conv5_2, [1,2,2,1], strides = [1,2,2,1], padding=pooling_padding)
 
-    self.conv5_1 = self.conv_layer(self.pool4, 512, 512, "conv5_1")
-    self.conv5_2 = self.conv_layer(self.conv5_1, 512, 512, "conv5_2")
-    self.conv5_3 = self.conv_layer(self.conv5_2, 512, 512, "conv5_3")
-    self.conv5_4 = self.conv_layer(self.conv5_3, 512, 512, "conv5_4")
-    self.pool5 = self.max_pool(self.conv5_4, 'pool5')
+    pool5_flattened = layers.flatten(pool5)
 
-    self.fc6 = self.fc_layer(self.pool5, 25088, 4096, "fc6")  # 25088 = ((224 // (2 ** 5)) ** 2) * 512
-    self.relu6 = tf.nn.relu(self.fc6)
-    self.relu6 = tf.nn.dropout(self.relu6, self.keep_prob)
+    fc1 = layers.fully_connected(pool5_flattened, 4096, biases_initializer=tf.constant_initializer(0), weights_regularizer=self.regularizer, weights_initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    relu1 = tf.nn.relu(fc1)
+    relu1 = tf.nn.dropout(relu1, self.keep_prob)
 
-    self.fc7 = self.fc_layer(self.relu6, 4096, 4096, "fc7")
-    self.relu7 = tf.nn.relu(self.fc7)
-    self.relu7 = tf.nn.dropout(self.relu7, self.keep_prob)
+    fc2 = layers.fully_connected(relu1, 4096, biases_initializer=tf.constant_initializer(0), weights_regularizer=self.regularizer, weights_initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    relu2 = tf.nn.relu(fc2)
+    relu2 = tf.nn.dropout(relu2, self.keep_prob)
 
-    self.fc8 = self.fc_layer(self.relu7, 4096, 1000, "fc8")
-    self.data_dict = None
-
-    return self.fc8
+    fc3 = layers.fully_connected(relu2, 1000, biases_initializer=tf.constant_initializer(0), weights_regularizer=self.regularizer, weights_initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    relu3 = tf.nn.relu(fc3)
+    relu3 = tf.nn.dropout(relu3, self.keep_prob)
+    return relu3
 
   def avg_pool(self, bottom, name):
     return tf.nn.avg_pool(bottom, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name=name)
@@ -147,8 +140,13 @@ class Siamese_Net:
     reg_term = layers.apply_regularization(self.regularizer, reg_vars)
     return tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y_int, logits=out)) + reg_term
 
+  def contrastive_loss(self):
+    a = self.y * tf.square(self.distance)
+    a2 = (1-self.y) * tf.square(tf.maximum((1-self.distance), 0))
+    return tf.reduce_sum(a + a2) / self.batch_size / 2
+
   def add_optimizer_loss(self, loss):
-    optimizer = tf.train.AdamOptimizer(learning_rate=0.0001)
+    optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
     gvs = optimizer.compute_gradients(loss)
     gs, vs = zip(*gvs)
     self.grad_norm = tf.global_norm(gs)
