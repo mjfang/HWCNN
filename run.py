@@ -10,10 +10,10 @@ from scipy import misc
 from PIL import Image
 
 log_file = "logfile"
-batch_size = 64
-num_train = 100
-num_val = 100
-num_test = 100
+batch_size = 15
+num_train = 10000
+num_val = 1000
+num_test = 1000
 input_width = 2270 #original image sizes
 input_height = 342
 

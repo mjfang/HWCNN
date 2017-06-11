@@ -38,7 +38,7 @@ class Siamese_Net:
   def resnet(self, input):
     return resnet.inference_small(input, is_training=True, num_blocks=1)
   def softmax_loss(self):
-    self.h = tf.concat([tf.square(self.out1-self.out2), self.out1, self.out2], axis=1)
+    self.h = tf.concat([tf.square(self.out1-self.out2), tf.multiply(self.out1, self.out2), self.out1, self.out2], axis=1)
     out = layers.fully_connected(self.h, 2, activation_fn = None)
     
     self.distance =tf.nn.softmax( out)[:, 0]
@@ -52,7 +52,7 @@ class Siamese_Net:
     a2 = (1-self.y) * tf.square(tf.maximum((1-self.distance), 0))
     return tf.reduce_sum(a + a2) / self.batch_size / 2
   def add_optimizer_loss(self, loss):
-    optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
+    optimizer = tf.train.AdamOptimizer(learning_rate=0.002)
     gvs = optimizer.compute_gradients(loss)
     gs, vs = zip(*gvs)
     self.grad_norm = tf.global_norm(gs)
