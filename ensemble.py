@@ -17,7 +17,7 @@ num_test = 1000
 input_width = 2270 #original image sizes
 input_height = 342
 
-num_epochs = 30
+num_epochs = 25
 input_height_modified = 250
 input_width_modified = 1500
 scale = 0.25
@@ -174,6 +174,7 @@ else:
   data = pickle.load(open("dataset", "rb"))
   y_train, x_val, y_val, x_test, y_test, test_record = data
   x_train = h5py.File('x_train.h5','r')['x_train'][()]
+  print("LOADED STATIC DATA")
 print("finished getting data", time.time() - start_time)
 #data
 
@@ -196,6 +197,10 @@ with tf.Session() as sess:
   saver = tf.train.Saver()
   counter = 0
   best_val_acc = 0.
+  best_test_acc = 0.
+  best_test_probs = None
+  best_val_probs = None
+  test_y = None
   for epoch in range(num_epochs):
     avg_loss = 0.
     count_tp = 0.
@@ -241,6 +246,7 @@ with tf.Session() as sess:
     fw.add_summary(tf.Summary(value=[tf.Summary.Value(tag="tr_acc", simple_value=acc)]), epoch)
     
     #val
+    val_probs = []
     v_tp = 0.
     v_tn = 0.
     v_fp = 0.
@@ -257,84 +263,51 @@ with tf.Session() as sess:
       v_tn += tn
       v_fp += fp
       v_fn += fn
+      val_probs.append(predict_val.ravel())
     
     val_acc = 100 * (v_tp + v_tn) / (v_tp + v_tn + v_fp + v_fn)
-    if val_acc > best_val_acc:
-      best_val_acc = val_acc
-      saver.save(sess, "./model4")
     print("Val set accuracy %0.2f tp %f tn %f fp %f fn %f" % (val_acc, v_tp, v_tn, v_fp, v_fn))
     log.write("Val set accuracy %0.2f tp %f tn %f fp %f fn %f" % (val_acc, v_tp, v_tn, v_fp, v_fn))
 
     val_acc_epoch.append(val_acc)
     fw.add_summary(tf.Summary(value=[tf.Summary.Value(tag="val_acc", simple_value=val_acc)]), epoch)
+
+      
     #test
+    test_probs = []
     te_tp = 0.
     te_tn = 0.
     te_fp = 0.
     te_fn = 0.
-    
     total_test_batch = int(x_test.shape[0]/batch_size)
     for i in range(total_test_batch):
       start = i * batch_size
       end = (i+1) * batch_size
       input1, input2, y = get_next_batch(start, end, x_test, y_test)
-      predict = siamese.distance.eval(feed_dict={
+      predict_test = siamese.distance.eval(feed_dict={
         siamese.x1:input1,
         siamese.x2:input2,
         siamese.y: y
       })
-      tp, tn, fp, fn = compute_counts(predict, y)
+      test_probs.append(predict_test.ravel())
+      tp, tn, fp, fn = compute_counts(predict_test, y)
       te_tp += tp
       te_tn += tn
       te_fp += fp
       te_fn += fn
+    
+    test_acc = 100 * (te_tp + te_tn) / (te_tp + te_tn + te_fp + te_fn)
+    if val_acc > best_val_acc:
+      best_test_probs = test_probs
+      best_val_probs = val_probs
+      best_val_acc = val_acc
+      best_test_acc = test_acc
+      test_y = y
 
     print("Test set accuracy %0.2f" % (100 * (te_tp + te_tn) / (te_tp + te_tn + te_fp + te_fn)))
     log.write("Test set accuracy %0.2f" % (100 * (te_tp + te_tn) / (te_tp + te_tn + te_fp + te_fn)))
 
-
-  #test
-  te_tp = 0.
-  te_tn = 0.
-  te_fp = 0.
-  te_fn = 0.
-  val_acc = 100 * (v_tp + v_tn) / (v_tp + v_tn + v_fp + v_fn)
-  val_acc_epoch.append(val_acc)
-  print("Val set accuracy %0.2f tp %f tn %f fp %f fn %f" % (val_acc, v_tp, v_tn, v_fp, v_fn))
-  fw.add_summary(tf.Summary(value=[tf.Summary.Value(tag="val_acc", simple_value=val_acc)]), epoch)
+  print(best_val_acc, best_test_acc)
+  data = (best_test_probs, best_val_probs, best_val_acc, best_test_acc, test_y)
+  pickle.dump(data, open("run5.pkl", "wb"))
   
-  total_test_batch = int(x_test.shape[0]/batch_size)
-  # for i in range(total_test_batch):
-  #   start = i * batch_size
-  #   end = (i+1) * batch_size
-  #   input1, input2, y = get_next_batch(start, end, x_test, y_test)
-  predict = siamese.distance.eval(feed_dict={
-    siamese.x1:x_test[:, 0],
-    siamese.x2:x_test[:, 1],
-    siamese.y: y_test
-  })
-  #   tp, tn, fp, fn = compute_counts(predict, y)
-  #   te_tp += tp
-  #   te_tn += tn
-  #   te_fp += fp
-  #   te_fn += fn
-
-  # print("Test set accuracy %0.2f" % (100 * (te_tp + te_tn) / (te_tp + te_tn + te_fp + te_fn)))
-
-
-  sample_mistakes(test_record, predict, y_test)
-  print(tr_acc_epoch, val_acc_epoch)
-  log.write((tr_ac_apoch, val_acc_epoch))
-  log.close()
-  #print("SAVING")
-  #saver.save(sess, "./model2", global_step=epoch)
-  #print("Model saved ", name)
-  #t = np.arange(len(tr_acc_epoch))
-  #plt.plot(t, tr_acc_epoch, 'bo')
-  #plt.plot(t, val_acc_epoch, 'ro')
-  #plt.ylabel('Accuracy')
-  #plt.xlabel('Num. epochs')
-  #tr_patch = mpatches.Patch(color='blue', label='Training Accuracy')
-  #val_patch = mpatches.Patch(color='red', label='Validation Accuracy')
-  #plt.savefig('fig.png')
-
