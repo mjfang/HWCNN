@@ -5,7 +5,7 @@ import tensorflow.contrib.layers as layers
 import resnet
 
 class Siamese_Net:
-  
+
   def __init__(self, batch_size, input_shape):
     self.x1 = tf.placeholder(tf.float32, input_shape) # TODO: change to true dimensions
     self.x2 = tf.placeholder(tf.float32, input_shape)
@@ -25,9 +25,9 @@ class Siamese_Net:
   def network(self, input):
     self.regularizer = layers.l2_regularizer(scale=0.1)
     conv1 = layers.conv2d(input, num_outputs=32, kernel_size=[10, 10], stride=[1, 1])
-    pool1 = tf.nn.max_pool(conv1,[1,2,2,1], strides = [1,2,2,1], padding='VALID') 
+    pool1 = tf.nn.max_pool(conv1,[1,2,2,1], strides = [1,2,2,1], padding='VALID')
     conv2 = layers.conv2d(pool1, num_outputs=64, kernel_size=[8, 8], stride=[1,1])
-    pool2 = tf.nn.max_pool(conv2,[1,2,2,1], strides = [1,2,2,1], padding='VALID') 
+    pool2 = tf.nn.max_pool(conv2,[1,2,2,1], strides = [1,2,2,1], padding='VALID')
     conv3 = layers.conv2d(pool2, num_outputs = 64, kernel_size=[4,4], stride=[1,1])
     conv2_flattened = layers.flatten(conv2)
     fc1 = layers.fully_connected(conv2_flattened, 400, biases_initializer=tf.constant_initializer(0), weights_regularizer=self.regularizer)
@@ -38,15 +38,15 @@ class Siamese_Net:
   def resnet(self, input):
     return resnet.inference_small(input, is_training=True, num_blocks=1)
   def softmax_loss(self):
-    self.h = tf.concat([tf.square(self.out1-self.out2), self.out1, self.out2], axis=1)
+    self.h = tf.concat([tf.square(self.out1-self.out2), tf.multiply(self.out1,self.out2), self.out1, self.out2], axis=1)
     out = layers.fully_connected(self.h, 2, activation_fn = None)
-    
+
     self.distance =tf.nn.softmax( out)[:, 0]
     y_int = tf.cast(self.y, tf.int32)
     # reg_vars = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
     # reg_term = layers.apply_regularization(self.regularizer, reg_vars)
     return tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y_int, logits=out)) #+ reg_term
-    
+
   def contrastive_loss(self):
     a = self.y * tf.square(self.distance)
     a2 = (1-self.y) * tf.square(tf.maximum((1-self.distance), 0))

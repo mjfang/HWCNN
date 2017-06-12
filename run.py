@@ -8,18 +8,20 @@ import pickle
 import h5py
 from scipy import misc
 from PIL import Image
+from sklearn import metrics
 
+log_file = "logfile"
 batch_size = 64
 num_train = 10000
 num_val = 1000
 num_test = 1000
 input_width = 2270 #original image sizes
 input_height = 342
-num_epochs = 40
+num_epochs = 45
 input_height_modified = 250
 input_width_modified = 1500
 scale = 0.25
-
+log = open(log_file, 'w')
 def get_random_exclude(low, high, exclude):
   r = np.random.randint(low, high)
   while r == exclude:
@@ -87,12 +89,17 @@ def get_dataset(data_dir, writer_index_low, writer_index_high, num_examples):
 #
 #
 def compute_counts(prediction,labels):
-  
+
+  # tp = labels[prediction.ravel() < 0.5].sum()
+  # tn = (1-labels)[prediction.ravel() > 0.5].sum()
+  # fp = labels[prediction.ravel() > 0.5].sum()
+  # fn = (1-labels)[prediction.ravel() < 0.5].sum()
+
   tp = labels[prediction.ravel() < 0.5].sum()
   tn = (1-labels)[prediction.ravel() > 0.5].sum()
-  fp = labels[prediction.ravel() > 0.5].sum()
-  fn = (1-labels)[prediction.ravel() < 0.5].sum()
-  
+  fp = (1-labels)[prediction.ravel() < 0.5].sum()
+  fn = labels[prediction.ravel() > 0.5].sum()
+
   return tp, tn, fp, fn
 
 def output_random_distances(prediction, labels, num_outputs = 5):
@@ -163,7 +170,7 @@ with tf.Session() as sess:
   name="results" + datetime.datetime.now().strftime("%m-%d-%H-%M-%S")
   os.makedirs(name)
   #train_step = tf.train.AdamOptimizer().minimize(siamese.loss)
-  merged, fw = do_summaries(siamese, sess.graph, output_file=name) 
+  merged, fw = do_summaries(siamese, sess.graph, output_file=name)
   sess.run(tf.global_variables_initializer())
   saver = tf.train.Saver()
   counter = 0
@@ -205,11 +212,13 @@ with tf.Session() as sess:
       #if i % 10 == 0:
       #  ('step %d: loss %.3f' % (i, loss_v))
     duration = time.time() - start_time
-    acc = (count_tp + count_tn) / (count_tp + count_tn + count_fp + count_fn)  
+    acc = (count_tp + count_tn) / (count_tp + count_tn + count_fp + count_fn)
     print('epoch %d  time: %f loss %0.5f acc %0.2f tp %f tn %f fp %f fn %f' %(epoch,duration,avg_loss/(total_batch),acc, count_tp, count_tn, count_fp, count_fn))
+    log.write('epoch %d  time: %f loss %0.5f acc %0.2f tp %f tn %f fp %f fn %f' %(epoch,duration,avg_loss/(total_batch),acc, count_tp, count_tn, count_fp, count_fn))
+
     tr_acc_epoch.append(acc)
     fw.add_summary(tf.Summary(value=[tf.Summary.Value(tag="tr_acc", simple_value=acc)]), epoch)
-    
+
     #val
     v_tp = 0.
     v_tn = 0.
@@ -227,13 +236,14 @@ with tf.Session() as sess:
       v_tn += tn
       v_fp += fp
       v_fn += fn
-    
+
     val_acc = 100 * (v_tp + v_tn) / (v_tp + v_tn + v_fp + v_fn)
     if val_acc > best_val_acc:
       best_val_acc = val_acc
-      if epoch > 20:
-        saver.save(sess, "./model")
+      #saver.save("./model23")
     print("Val set accuracy %0.2f tp %f tn %f fp %f fn %f" % (val_acc, v_tp, v_tn, v_fp, v_fn))
+    log.write("Val set accuracy %0.2f tp %f tn %f fp %f fn %f" % (val_acc, v_tp, v_tn, v_fp, v_fn))
+
     val_acc_epoch.append(val_acc)
     fw.add_summary(tf.Summary(value=[tf.Summary.Value(tag="val_acc", simple_value=val_acc)]), epoch)
     #test
@@ -241,7 +251,7 @@ with tf.Session() as sess:
     te_tn = 0.
     te_fp = 0.
     te_fn = 0.
-    
+
     total_test_batch = int(x_test.shape[0]/batch_size)
     for i in range(total_test_batch):
       start = i * batch_size
@@ -259,6 +269,7 @@ with tf.Session() as sess:
       te_fn += fn
 
     print("Test set accuracy %0.2f" % (100 * (te_tp + te_tn) / (te_tp + te_tn + te_fp + te_fn)))
+    log.write("Test set accuracy %0.2f" % (100 * (te_tp + te_tn) / (te_tp + te_tn + te_fp + te_fn)))
 
 
   #test
@@ -266,29 +277,37 @@ with tf.Session() as sess:
   te_tn = 0.
   te_fp = 0.
   te_fn = 0.
+  all_predict = []
+  all_y = []
   val_acc = 100 * (v_tp + v_tn) / (v_tp + v_tn + v_fp + v_fn)
   val_acc_epoch.append(val_acc)
   print("Val set accuracy %0.2f tp %f tn %f fp %f fn %f" % (val_acc, v_tp, v_tn, v_fp, v_fn))
   fw.add_summary(tf.Summary(value=[tf.Summary.Value(tag="val_acc", simple_value=val_acc)]), epoch)
-  
+
   total_test_batch = int(x_test.shape[0]/batch_size)
   for i in range(total_test_batch):
     start = i * batch_size
-    end = (i+1) * batch_size 
+    end = (i+1) * batch_size
     input1, input2, y = get_next_batch(start, end, x_test, y_test)
     predict = siamese.distance.eval(feed_dict={
       siamese.x1:input1,
       siamese.x2:input2,
       siamese.y: y
     })
+    all_y.extend(y)
+    all_predict.extend(predict)
     tp, tn, fp, fn = compute_counts(predict, y)
     te_tp += tp
     te_tn += tn
     te_fp += fp
     te_fn += fn
 
+  fpr, tpr, _ = metrics.roc_curve(all_y, all_predict)
+  print(fpr.tolist(), tpr.tolist())
   print("Test set accuracy %0.2f" % (100 * (te_tp + te_tn) / (te_tp + te_tn + te_fp + te_fn)))
   print(tr_acc_epoch, val_acc_epoch)
+  # log.write((tr_acc_epoch, val_acc_epoch))
+  log.close()
   #saver.save(sess, "./model" + epoch)
   #print("Model saved ", name)
   #t = np.arange(len(tr_acc_epoch))
@@ -299,4 +318,3 @@ with tf.Session() as sess:
   #tr_patch = mpatches.Patch(color='blue', label='Training Accuracy')
   #val_patch = mpatches.Patch(color='red', label='Validation Accuracy')
   #plt.savefig('fig.png')
-
