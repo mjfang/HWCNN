@@ -9,6 +9,9 @@ import h5py
 from scipy import misc
 from PIL import Image
 
+#TODO: save multiple models. (with different configs?)
+
+
 log_file = "logfile"
 batch_size = 64
 num_train = 100
@@ -17,7 +20,7 @@ num_test = 100
 input_width = 2270 #original image sizes
 input_height = 342
 
-num_epochs = 20
+num_epochs = 2
 input_height_modified = 250
 input_width_modified = 1500
 scale = 0.25
@@ -36,6 +39,12 @@ def processImage(image):
   image = np.expand_dims(image,axis=2)
   image = image.astype(float)
   return image / 256.
+
+def deprocessImage(image):
+  image = np.squeeze(image)
+  return image * 256
+
+
 #assume
 def get_dataset(data_dir, writer_index_low, writer_index_high, num_examples):
   pairs = []
@@ -111,6 +120,7 @@ def output_random_distances(prediction, labels, num_outputs = 5):
     print(labels[idx], prediction[idx])
 
 def normalize(x, mean):
+  print(mean)
   return (x - mean)
 
 def sample_mistakes(test_record, distance, labels):
@@ -144,6 +154,8 @@ def create_data(data_dir, num_train, num_val, num_test):
   cutoff_2 = cutoff_1 + np.round(val_frac * num_writers)
   x_train, y_train, _ = get_dataset(data_dir, 0, cutoff_1, num_train)
   x_mean = np.mean(x_train, axis=0)
+  pickle.dump(x_mean, open("x_mean", "wb"))
+
   x_train = normalize(x_train, x_mean)
   x_val, y_val, _ = get_dataset(data_dir, cutoff_1, cutoff_2, num_val)
   x_val = normalize(x_val, x_mean)
@@ -261,7 +273,8 @@ with tf.Session() as sess:
     val_acc = 100 * (v_tp + v_tn) / (v_tp + v_tn + v_fp + v_fn)
     if val_acc > best_val_acc:
       best_val_acc = val_acc
-      #saver.save("./model23")
+      print ("saving!")
+      saver.save(sess, "./model")
     print("Val set accuracy %0.2f tp %f tn %f fp %f fn %f" % (val_acc, v_tp, v_tn, v_fp, v_fn))
     log.write("Val set accuracy %0.2f tp %f tn %f fp %f fn %f" % (val_acc, v_tp, v_tn, v_fp, v_fn))
 
@@ -324,7 +337,7 @@ with tf.Session() as sess:
 
   sample_mistakes(test_record, predict, y_test)
   print(tr_acc_epoch, val_acc_epoch)
-  log.write((tr_ac_apoch, val_acc_epoch))
+  # log.write((tr_acc_epoch, val_acc_epoch))
   log.close()
   #saver.save(sess, "./model" + epoch)
   #print("Model saved ", name)

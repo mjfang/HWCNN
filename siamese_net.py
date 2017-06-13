@@ -39,13 +39,13 @@ class Siamese_Net:
     return resnet.inference_small(input, is_training=True, num_blocks=1)
   def softmax_loss(self):
     self.h = tf.concat([tf.square(self.out1-self.out2), self.out1, self.out2], axis=1)
-    out = layers.fully_connected(self.h, 2, activation_fn = None)
+    self.scores = layers.fully_connected(self.h, 2, activation_fn = None)
     
-    self.distance =tf.nn.softmax( out)[:, 0]
+    self.distance =tf.nn.softmax( self.scores)[:, 0]
     y_int = tf.cast(self.y, tf.int32)
     # reg_vars = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
     # reg_term = layers.apply_regularization(self.regularizer, reg_vars)
-    return tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y_int, logits=out)) #+ reg_term
+    return tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y_int, logits=self.scores)) #+ reg_term
     
   def contrastive_loss(self):
     a = self.y * tf.square(self.distance)
