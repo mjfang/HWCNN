@@ -25,6 +25,7 @@ input_height_modified = 250
 input_width_modified = 1500
 scale = 0.25
 log = open(log_file, 'w')
+model_out = "model_default"
 def get_random_exclude(low, high, exclude):
   r = np.random.randint(low, high)
   while r == exclude:
@@ -156,6 +157,7 @@ else:
   data = pickle.load(open("dataset", "rb"))
   y_train, x_val, y_val, x_test, y_test = data
   x_train = h5py.File('x_train.h5','r')['x_train'][()]
+  print(x_train.shape, x_test.shape)
 print("finished getting data", time.time() - start_time)
 #data
 
@@ -243,7 +245,8 @@ with tf.Session() as sess:
     val_acc = 100 * (v_tp + v_tn) / (v_tp + v_tn + v_fp + v_fn)
     if val_acc > best_val_acc:
       best_val_acc = val_acc
-      #saver.save("./model23")
+      print("saving!")
+      saver.save(sess, model_out)
     print("Val set accuracy %0.2f tp %f tn %f fp %f fn %f" % (val_acc, v_tp, v_tn, v_fp, v_fn))
     log.write("Val set accuracy %0.2f tp %f tn %f fp %f fn %f" % (val_acc, v_tp, v_tn, v_fp, v_fn))
 
